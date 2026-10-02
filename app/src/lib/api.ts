@@ -10,9 +10,17 @@ function resolveBase(): string {
     const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
     return `http://${host}:4000/api`;
   }
-  const hostUri = (Constants.expoConfig as any)?.hostUri as string | undefined; // LAN IP of Expo dev server
+  const hostUri = (Constants.expoConfig as any)?.hostUri as string | undefined; // LAN IP of the Expo dev server
   const host = hostUri?.split(':')[0] ?? '192.168.31.158';
   return `http://${host}:4000/api`;
+}
+let customBaseUrl: string | null = null;
+export function getApiBase(): string {
+  if (customBaseUrl) return customBaseUrl;
+  return resolveBase();
+}
+export function setApiBaseOverride(url: string | null) {
+  customBaseUrl = url ? url.replace(/\/$/, '') : null;
 }
 export const API_BASE = resolveBase();
 
@@ -22,8 +30,8 @@ export const tokenStore = {
   async get(): Promise<string | null> {
     try { return Platform.OS === 'web' ? await AsyncStorage.getItem(KEY) : await SecureStore.getItemAsync(KEY); } catch { return null; }
   },
-  async set(t: string) { try { Platform.OS === 'web' ? await AsyncStorage.setItem(KEY, t) : await SecureStore.setItemAsync(KEY, t); } catch {} },
-  async clear() { try { Platform.OS === 'web' ? await AsyncStorage.removeItem(KEY) : await SecureStore.deleteItemAsync(KEY); } catch {} },
+  async set(t: string) { try { Platform.OS === 'web' ? await AsyncStorage.setItem(KEY, t) : await SecureStore.setItemAsync(KEY, t); } catch { } },
+  async clear() { try { Platform.OS === 'web' ? await AsyncStorage.removeItem(KEY) : await SecureStore.deleteItemAsync(KEY); } catch { } },
 };
 
 let token: string | null = null;
@@ -43,10 +51,11 @@ export async function api<T = any>(method: string, path: string, body?: unknown,
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 20000);
   let res: Response;
+  const baseUrl = getApiBase();
   try {
-    res = await fetch(API_BASE + path, { method, headers, body: form ?? (body === undefined ? undefined : JSON.stringify(body)), signal: ctrl.signal });
+    res = await fetch(baseUrl + path, { method, headers, body: form ?? (body === undefined ? undefined : JSON.stringify(body)), signal: ctrl.signal });
   } catch {
-    throw new ApiError(0, 'Cannot reach the server. Check your connection and try again.', 'NETWORK');
+    throw new ApiError(0, `Cannot reach the server (${baseUrl}). Check your connection and try again.`, 'NETWORK');
   } finally { clearTimeout(timer); }
   const json: any = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -92,5 +101,5 @@ export const newKey = () => `${Date.now().toString(36)}-${Math.random().toString
 /** Best-effort crash reporting to the admin error centre. */
 export function reportClientError(message: string, stack?: string, screen?: string) {
   if (!token) return;
-  api('POST', '/client-errors', { message: message.slice(0, 900), stack: stack?.slice(0, 3900), screen, device: `${Platform.OS} ${Platform.Version}` }).catch(() => {});
+  api('POST', '/client-errors', { message: message.slice(0, 900), stack: stack?.slice(0, 3900), screen, device: `${Platform.OS} ${Platform.Version}` }).catch(() => { });
 }

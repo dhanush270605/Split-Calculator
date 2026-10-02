@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/lib/auth';
 import { errMsg } from '@/lib/hooks';
-import { API_BASE } from '@/lib/api';
+import { getApiBase, setApiBaseOverride } from '@/lib/api';
 import { Banner, Btn, Card, Row, Txt } from '@/ui/components';
 import { LogoMark } from '@/ui/shell';
 import { radius, space, useTheme } from '@/ui/theme';
@@ -20,6 +20,40 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [uFocused, setUFocused] = useState(false);
   const [pFocused, setPFocused] = useState(false);
+  const [currentApi, setCurrentApi] = useState(getApiBase());
+
+  const changeServerUrl = () => {
+    if (Platform.OS === 'web') {
+      const url = window.prompt('Enter Server API URL (e.g. http://192.168.31.158:4000/api):', currentApi);
+      if (url !== null) {
+        setApiBaseOverride(url);
+        setCurrentApi(getApiBase());
+      }
+    } else {
+      Alert.prompt(
+        'Server API URL',
+        'Enter your server API address (e.g. http://192.168.31.158:4000/api):',
+        [
+          {
+            text: 'Reset Default',
+            onPress: () => {
+              setApiBaseOverride(null);
+              setCurrentApi(getApiBase());
+            },
+          },
+          {
+            text: 'Save',
+            onPress: (val?: string) => {
+              setApiBaseOverride(val || null);
+              setCurrentApi(getApiBase());
+            },
+          },
+        ],
+        'plain-text',
+        currentApi
+      );
+    }
+  };
 
   const submit = async () => {
     setError(null);
@@ -107,9 +141,11 @@ export default function Login() {
         </Row>
       </View>
 
-      <Txt variant="small" tone="muted" style={{ textAlign: 'center', marginTop: space.xs }}>
-        Connected to {API_BASE}
-      </Txt>
+      <Pressable onPress={changeServerUrl} style={{ marginTop: space.xs, padding: 4 }}>
+        <Txt variant="small" tone="muted" style={{ textAlign: 'center', textDecorationLine: 'underline' }}>
+          Connected to {currentApi} (Tap to change)
+        </Txt>
+      </Pressable>
     </Card>
   );
 
