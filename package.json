@@ -1,0 +1,19 @@
+{
+  "name": "split-calculator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Trip / Hackathon expense splitting and management",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix app install",
+    "dev:api": "npm --prefix server run start",
+    "dev:app": "npm --prefix app run start",
+    "dev:web": "npm --prefix app run web",
+    "seed": "npm --prefix server run seed",
+    "create-admin": "npm --prefix server run create-admin",
+    "typecheck": "npm --prefix server run typecheck && npm --prefix app run typecheck",
+    "lint": "npm --prefix server run lint && npm --prefix app run lint",
+    "test": "npm --prefix server run test",
+    "build": "npm --prefix server run build && npm --prefix app run export:web",
+    "verify": "npm run typecheck && npm test && npm run build"
+  }
+}

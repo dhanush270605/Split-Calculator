@@ -1,0 +1,33 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+server/dist/
+app/dist/
+app/.expo/
+app/web-build/
+*.apk
+*.aab
+
+# secrets & local config (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.jks
+
+# local database & uploads
+server/data/
+*.db
+*.db-wal
+*.db-shm
+
+# logs / OS / editor
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.claude/settings.local.json
