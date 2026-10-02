@@ -32,7 +32,7 @@ export default function Users() {
       ) : r.error ? (
         <ErrorBox message={r.error} onRetry={r.reload} />
       ) : r.data.users.length === 0 ? (
-        <Empty icon="people-outline" title="No users found" hint="Try adjusting your search terms or status filters." actionTitle="Create user" onAction={() => router.push('/admin/user-new')} />
+        <Empty icon="people-outline" title="No users found" hint="Try adjusting your search terms or status filters." actionLabel="Create user" onAction={() => router.push('/admin/user-new')} />
       ) : (
         r.data.users.map((u: any) => (
           <Card key={u.id} onPress={() => router.push({ pathname: '/admin/user/[id]', params: { id: u.id } })}>

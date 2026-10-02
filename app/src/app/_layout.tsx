@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from '@/lib/auth';
 import { reportClientError } from '@/lib/api';
 import { ThemeProvider, useTheme } from '@/ui/theme';
 import { ResponsiveShell } from '@/ui/shell';
+import { ToastProvider } from '@/ui/toast';
 
 export { ErrorBoundary } from '@/lib/error-boundary';
 
@@ -87,8 +88,10 @@ export default function Root() {
     <SafeAreaProvider>
       <ThemeProvider>
         <AuthProvider>
-          <StatusBar style="auto" />
-          <Gate />
+          <ToastProvider>
+            <StatusBar style="auto" />
+            <Gate />
+          </ToastProvider>
         </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>

@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Image, ImageStyle, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TextInputProps, useWindowDimensions, View, ViewStyle,
+  ActivityIndicator, Alert, Animated, Image, ImageStyle, Modal, Platform, Pressable, RefreshControl, ScrollView, Text, TextInput, TextInputProps, useWindowDimensions, View, ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,6 +23,9 @@ export function Screen({
   const bgStyle = { backgroundColor: t.bg, flex: 1 };
   const contentPadding = padded ? (isWide ? space.xl : space.lg) : 0;
 
+  // On mobile, bottom tabs are 60px + safe area. Add enough clearance.
+  const bottomPad = isWide ? insets.bottom + 32 : insets.bottom + 88;
+
   if (!scroll) {
     return (
       <View style={[bgStyle, { padding: contentPadding }, customStyle]}>
@@ -35,9 +38,10 @@ export function Screen({
     <ScrollView
       style={bgStyle}
       keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
       contentContainerStyle={{
         padding: contentPadding,
-        paddingBottom: insets.bottom + 48,
+        paddingBottom: bottomPad,
         gap: space.md,
         maxWidth,
         width: '100%',
@@ -590,21 +594,23 @@ export function Skeleton({ width = '100%', height = 20, borderRadius = radius.md
 
 /** Empty State Component */
 export function Empty({
-  icon = 'file-tray-outline', title, hint, actionLabel, actionTitle, onAction,
+  icon = 'file-tray-outline', title, hint, actionLabel, onAction,
 }: {
-  icon?: any; title: string; hint?: string; actionLabel?: string; actionTitle?: string; onAction?: () => void;
+  icon?: any; title: string; hint?: string; actionLabel?: string; onAction?: () => void;
 }) {
   const t = useTheme();
-  const btnLabel = actionLabel ?? actionTitle;
   return (
     <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: space.lg, gap: space.sm }}>
-      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: t.primaryMuted, alignItems: 'center', justifyContent: 'center', marginBottom: space.xs }}>
-        <Ionicons name={icon} size={32} color={t.primary} />
+      <View style={{
+        width: 72, height: 72, borderRadius: 36,
+        backgroundColor: t.primaryMuted, alignItems: 'center', justifyContent: 'center', marginBottom: space.xs,
+      }}>
+        <Ionicons name={icon} size={36} color={t.primary} />
       </View>
       <Txt variant="h3" style={{ textAlign: 'center' }}>{title}</Txt>
       {hint ? <Txt variant="sub" tone="sub" style={{ textAlign: 'center', maxWidth: 400 }}>{hint}</Txt> : null}
-      {btnLabel && onAction ? (
-        <Btn title={btnLabel} variant="primary" small onPress={onAction} style={{ marginTop: space.sm }} />
+      {actionLabel && onAction ? (
+        <Btn title={actionLabel} variant="primary" small onPress={onAction} style={{ marginTop: space.sm }} />
       ) : null}
     </View>
   );
@@ -682,29 +688,40 @@ export function SpendingChart({
 }) {
   const t = useTheme();
   const max = Math.max(...items.map((i) => i.amountPaise), 1);
+  const palette = [t.primary, t.accent, t.success, t.info, t.warn, '#EC4899', '#14B8A6'];
 
   return (
     <View style={{ gap: space.sm, marginTop: space.xs }}>
-      <Row style={{ height, alignItems: 'flex-end', gap: space.md, paddingHorizontal: space.sm }}>
+      <View style={{ height, flexDirection: 'row', alignItems: 'flex-end', gap: 6, paddingHorizontal: space.sm }}>
         {items.map((item, idx) => {
-          const pct = Math.max(0.08, item.amountPaise / max);
-          const barColor = item.color ?? (idx % 2 === 0 ? t.primary : t.accent);
+          const pct = Math.max(0.06, item.amountPaise / max);
+          const barColor = item.color ?? palette[idx % palette.length];
           return (
-            <View key={idx} style={{ flex: 1, alignItems: 'center', gap: 6, height: '100%', justifyContent: 'flex-end' }}>
-              <View style={{ width: '100%', height: `${pct * 100}%`, backgroundColor: barColor, borderRadius: radius.xs, minHeight: 8 }} />
+            <View key={idx} style={{ flex: 1, alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end' }}>
+              <Txt variant="small" style={{ color: t.textSub, fontSize: 10, fontWeight: '700', textAlign: 'center' }} numberOfLines={1}>
+                {formatINR(item.amountPaise)}
+              </Txt>
+              <View style={{
+                width: '100%',
+                height: `${pct * 100}%`,
+                backgroundColor: barColor,
+                borderRadius: 4,
+                minHeight: 8,
+                opacity: 0.9,
+              }} />
             </View>
           );
         })}
-      </Row>
-      <Row style={{ gap: space.md, paddingHorizontal: space.sm }}>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 6, paddingHorizontal: space.sm }}>
         {items.map((item, idx) => (
           <View key={idx} style={{ flex: 1, alignItems: 'center' }}>
-            <Txt variant="small" numberOfLines={1} style={{ textAlign: 'center', color: t.textSub, fontSize: 11 }}>
-              {item.label}
+            <Txt variant="small" numberOfLines={2} style={{ textAlign: 'center', color: t.textSub, fontSize: 10 }}>
+              {label(item.label)}
             </Txt>
           </View>
         ))}
-      </Row>
+      </View>
     </View>
   );
 }
@@ -750,9 +767,15 @@ export function confirm(title: string, message: string, okLabel = 'Confirm'): Pr
   );
 }
 
+/**
+ * Legacy notice helper — kept for backward compatibility.
+ * Prefer useToast() hook for new components.
+ * On web, uses a temporary console warn instead of blocking alert.
+ */
 export function notice(title: string, message: string) {
   if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined') window.alert(`${title}\n\n${message}`);
+    // Non-blocking: log to console. Components using useToast() will show a visual toast.
+    console.info(`[notice] ${title}: ${message}`);
     return;
   }
   Alert.alert(title, message);

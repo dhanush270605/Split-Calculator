@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { get, post } from '@/lib/api';
@@ -52,6 +52,9 @@ export default function Expenses() {
   const list = useLoad(() => get(`/expenses?${qs}`), [qs]);
   const appr = useLoad(() => get('/approvals'));
 
+  // Refetch when filters change (useLoad only refetches on screen focus by default)
+  useEffect(() => { list.reload(false); }, [qs]);
+
   const respond = async (id: number, decision: 'APPROVE' | 'DECLINE') => {
     try {
       if (decision === 'DECLINE' && !(await confirm('Decline this share?', 'The creator will be asked to correct it. You will not owe anything for it meanwhile.', 'Decline'))) return;
@@ -64,9 +67,9 @@ export default function Expenses() {
 
   return (
     <Screen onRefresh={() => { list.refresh(); appr.refresh(); }} refreshing={list.refreshing}>
-      <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+      <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
         <Txt variant="h1">Expenses</Txt>
-        <Btn title="Add expense" icon="add-circle-outline" onPress={() => router.push('/expense/new')} />
+        <Btn title="+ Add" icon="add-circle-outline" small onPress={() => router.push('/expense/new')} />
       </Row>
 
       {/* Pending Approvals Card Stack */}
@@ -131,7 +134,7 @@ export default function Expenses() {
       ) : list.error ? (
         <ErrorBox message={list.error} onRetry={list.reload} />
       ) : (list.data?.expenses ?? []).length === 0 ? (
-        <Empty icon="receipt-outline" title="No expenses match" hint="Try clearing search filters or add a new expense." actionTitle="Create expense" onAction={() => router.push('/expense/new')} />
+        <Empty icon="receipt-outline" title="No expenses match" hint="Try clearing search filters or add a new expense." actionLabel="Create expense" onAction={() => router.push('/expense/new')} />
       ) : (
         list.data.expenses.map((e: any) => (
           <Card key={e.id} onPress={() => router.push({ pathname: '/expense/[id]', params: { id: e.id } })} tone={e.status === 'DECLINED' ? 'danger' : e.status === 'PENDING_APPROVAL' ? 'warn' : undefined}>

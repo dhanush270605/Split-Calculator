@@ -213,6 +213,7 @@ export default function ExpenseWizardForm() {
   if ((editId && !filled) || (events.loading && !events.data)) return <Screen><Loading /></Screen>;
 
   const choosable = (events.data?.events ?? []).filter((e: any) => isAdmin || ['UPCOMING', 'ACTIVE'].includes(e.status));
+  const eventName = choosable.find((e: any) => e.id === eventId)?.name ?? (eventId ? `Event #${eventId}` : '—');
   const nameOf = (id: number) => members.find((m) => m.id === id)?.name ?? `User ${id}`;
   const sum = (preview?.allocations ?? []).reduce((a, b) => a + b.sharePaise, 0);
 
@@ -438,14 +439,14 @@ export default function ExpenseWizardForm() {
           <Card tone="info">
             <Txt variant="h3">{f.title}</Txt>
             {amountPaise ? <Money paise={amountPaise} big signed /> : null}
-            <KV k="Event ID" v={String(eventId ?? '')} />
+            <KV k="Event" v={eventName} />
             <KV k="Category" v={label(f.category)} />
-            <KV k="Payment Method" v={f.method} />
+            <KV k="Payment Method" v={label(f.method)} />
             <KV k="Spent Date" v={f.spentAt} />
-            <KV k="Payer Type" v={f.payerType} />
-            <KV k="Split Method" v={f.splitMethod} />
-            <KV k="Visibility" v={f.visibility} />
-            <KV k="Receipt Attachments" v={`${files.length} photo(s)`} />
+            <KV k="Payer" v={label(f.payerType)} />
+            <KV k="Split Method" v={label(f.splitMethod)} />
+            <KV k="Visibility" v={label(f.visibility)} />
+            <KV k="Receipts" v={`${files.length} photo(s)`} />
           </Card>
 
           {preview?.allocations ? (

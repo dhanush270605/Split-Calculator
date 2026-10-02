@@ -2,6 +2,7 @@ import React from 'react';
 import { useWindowDimensions } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/lib/auth';
 import { useTheme } from '@/ui/theme';
 
@@ -13,21 +14,29 @@ export default function TabsLayout() {
   const { isAdmin, unread } = useAuth();
   const t = useTheme();
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const isWide = width >= 900;
+
+  const TAB_HEIGHT = 56 + insets.bottom;
 
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: t.primary,
-        tabBarInactiveTintColor: t.textSub,
+        tabBarInactiveTintColor: t.textMuted,
         tabBarStyle: {
           backgroundColor: t.card,
           borderTopColor: t.border,
           borderTopWidth: 1,
-          display: isWide ? 'none' : 'flex', // Hide bottom tabs on wide screen since sidebar handles nav
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
+          display: isWide ? 'none' : 'flex',
+          height: TAB_HEIGHT,
+          paddingBottom: insets.bottom + 4,
+          paddingTop: 6,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+          marginTop: 0,
         },
         headerStyle: { backgroundColor: t.card },
         headerTintColor: t.text,
@@ -46,7 +55,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="trips"
         options={{
-          title: isAdmin ? 'Events' : 'My Trips',
+          title: isAdmin ? 'Events' : 'Trips',
           tabBarIcon: renderIcon('airplane-outline', 'airplane'),
           headerShown: false,
         }}

@@ -138,12 +138,14 @@ export default function Trips() {
               </Row>
 
               <Row style={{ justifyContent: 'space-between', marginTop: space.xs, paddingTop: space.xs, borderTopWidth: 1, borderColor: t.border }}>
-                <Row style={{ gap: space.xs }}>
-                  <Ionicons name="calendar-outline" size={14} color={t.textSub} />
-                  <Txt variant="small" tone="sub">
-                    {shortDate(e.startDate)} → {shortDate(e.endDate)}
-                  </Txt>
-                </Row>
+                {e.startDate || e.endDate ? (
+                  <Row style={{ gap: space.xs }}>
+                    <Ionicons name="calendar-outline" size={14} color={t.textSub} />
+                    <Txt variant="small" tone="sub">
+                      {shortDate(e.startDate)}{e.endDate && e.endDate !== e.startDate ? ` → ${shortDate(e.endDate)}` : ''}
+                    </Txt>
+                  </Row>
+                ) : <View />}
 
                 <Row style={{ gap: space.sm }}>
                   <Row style={{ gap: 4 }}>
