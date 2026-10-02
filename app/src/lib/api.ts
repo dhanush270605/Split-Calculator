@@ -10,8 +10,8 @@ function resolveBase(): string {
     const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
     return `http://${host}:4000/api`;
   }
-  const hostUri = (Constants.expoConfig as any)?.hostUri as string | undefined; // LAN IP of the Expo dev server
-  const host = hostUri?.split(':')[0] ?? (Platform.OS === 'android' ? '10.0.2.2' : 'localhost');
+  const hostUri = (Constants.expoConfig as any)?.hostUri as string | undefined; // LAN IP of Expo dev server
+  const host = hostUri?.split(':')[0] ?? '192.168.31.158';
   return `http://${host}:4000/api`;
 }
 export const API_BASE = resolveBase();
