@@ -44,7 +44,7 @@ export default function EventReport() {
           {d.userWise.map((u: any) => (
             <Row key={u.userId} style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <Row style={{ flex: 1, gap: 10, alignItems: 'center' }}>
-                <Avatar name={u.name} userId={u.userId} size={36} />
+                <Avatar name={u.name} size={36} />
                 <View style={{ flex: 1 }}>
                   <Txt style={{ fontWeight: '600' }}>{u.name}</Txt>
                   <Txt variant="caption" tone="muted">Paid: {formatINR(u.paidPaise)} · Personal: {formatINR(u.personalPaise)}</Txt>
@@ -65,9 +65,9 @@ export default function EventReport() {
           <Card key={i}>
             <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <Row style={{ flex: 1, gap: 8, alignItems: 'center' }}>
-                <Avatar name={t.fromName} userId={t.fromUserId} size={32} />
+                <Avatar name={t.fromName} size={32} />
                 <Txt variant="caption" tone="muted">→</Txt>
-                <Avatar name={t.toName} userId={t.toUserId} size={32} />
+                <Avatar name={t.toName} size={32} />
                 <Txt style={{ fontWeight: '600', marginLeft: 4 }}>{t.fromName} owes {t.toName}</Txt>
               </Row>
               <Money paise={t.amountPaise} />

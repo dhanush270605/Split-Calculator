@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { get, post } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useDebounced, useLoad } from '@/lib/hooks';
-import { Badge, Btn, Card, Chips, Empty, ErrorBox, Field, IconButton, Row, Screen, Skeleton, Txt, shortDateTime } from '@/ui/components';
+import {
+  Badge, Btn, Card, Chips, Empty, ErrorBox, Field, IconButton,
+  Row, Screen, SectionTitle, Skeleton, Txt, shortDateTime,
+} from '@/ui/components';
 import { LEVEL_TONE, label, useTheme } from '@/ui/theme';
 
 const LEVEL_ICONS: Record<string, string> = {
@@ -34,15 +38,9 @@ export default function Notifications() {
   const q = useDebounced(search);
   const url = `/notifications?limit=60${unreadOnly ? '&unread=true' : ''}${level ? `&level=${level}` : ''}${q ? `&search=${encodeURIComponent(q)}` : ''}`;
 
-  const { data, loading, error, refresh, refreshing, reload } = useLoad(
-    () => get(url),
-    [unreadOnly, level, q]
-  );
+  const { data, loading, error, refresh, refreshing, reload } = useLoad(() => get(url), [unreadOnly, level, q]);
 
-  // Refetch whenever filter deps change (useLoad only refetches on focus by default)
-  useEffect(() => {
-    reload(false);
-  }, [unreadOnly, level, q]);
+  useEffect(() => { reload(false); }, [unreadOnly, level, q]);
 
   const [open, setOpen] = useState<number | null>(null);
 
@@ -54,50 +52,63 @@ export default function Notifications() {
     }
   };
 
+  const markAllRead = async () => {
+    await post('/notifications/read-all');
+    reload(true);
+    refreshUnread();
+  };
+
   return (
     <Screen onRefresh={refresh} refreshing={refreshing}>
-      <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <Txt variant="h1">Notifications</Txt>
-        <Btn
-          small
-          variant="secondary"
-          title="Mark all read"
-          icon="checkmark-done-outline"
-          onPress={async () => {
-            await post('/notifications/read-all');
-            reload(true);
-            refreshUnread();
-          }}
-        />
+
+      {/* ─ Header ─ */}
+      <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+        <View>
+          <Txt variant="h1">Notifications</Txt>
+          {data?.unreadCount > 0 ? (
+            <Txt variant="sub" tone="primary">{data.unreadCount} unread</Txt>
+          ) : (
+            <Txt variant="sub" tone="muted">All caught up</Txt>
+          )}
+        </View>
+        <Row style={{ gap: 8 }}>
+          {isAdmin ? (
+            <IconButton
+              icon="megaphone-outline"
+              size={42}
+              iconSize={20}
+              onPress={() => router.push('/admin/broadcast')}
+              tone="neutral"
+            />
+          ) : null}
+          <Btn
+            small
+            variant="secondary"
+            title="Mark all read"
+            icon="checkmark-done-outline"
+            onPress={markAllRead}
+          />
+        </Row>
       </Row>
 
-      <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-        <Chips
-          value={unreadOnly ? 'u' : 'a'}
-          onChange={(v) => setUnreadOnly(v === 'u')}
-          options={[
-            { value: 'a', label: 'All' },
-            { value: 'u', label: `Unread (${data?.unreadCount ?? 0})` },
-          ]}
-        />
-        {isAdmin ? (
-          <IconButton
-            icon="megaphone-outline"
-            size={40}
-            iconSize={20}
-            onPress={() => router.push('/admin/broadcast')}
-            tone="primary"
-          />
-        ) : null}
-      </Row>
+      {/* ─ Filters ─ */}
+      <Chips
+        value={unreadOnly ? 'u' : 'a'}
+        onChange={(v) => setUnreadOnly(v === 'u')}
+        options={[
+          { value: 'a', label: 'All' },
+          { value: 'u', label: `Unread${data?.unreadCount ? ` (${data.unreadCount})` : ''}` },
+        ]}
+      />
 
       {isAdmin ? (
-        <View style={{ gap: 8, marginVertical: 4 }}>
+        <View style={{ gap: 10 }}>
           <Chips
+            label="Priority Level"
             value={level}
             onChange={setLevel}
             options={[
-              { value: '', label: 'All priority' },
+              { value: '', label: 'Any priority' },
               ...Object.keys(LEVEL_TONE).map((l) => ({ value: l, label: label(l) })),
             ]}
           />
@@ -109,6 +120,16 @@ export default function Notifications() {
           />
         </View>
       ) : null}
+
+      {/* ─ List ─ */}
+      <SectionTitle
+        title="Notifications"
+        action={
+          data?.notifications?.length > 0
+            ? <Txt variant="small" tone="muted">{data.notifications.length} shown</Txt>
+            : undefined
+        }
+      />
 
       {loading && !data ? (
         <View style={{ gap: 10 }}>
@@ -129,28 +150,35 @@ export default function Notifications() {
           const isAction = n.level === 'ACTION_REQUIRED';
           const isUnread = !n.readAt;
           const iconName = LEVEL_ICONS[n.level] ?? 'notifications-outline';
-          const levelTone = LEVEL_TONE[n.level];
+          const isOpen = open === n.id;
+
           return (
             <Card
               key={n.id}
               tone={isAction ? 'action' : undefined}
               style={isUnread ? { borderColor: t.primary, borderWidth: 1.5 } : undefined}
-              onPress={() => { setOpen(open === n.id ? null : n.id); read(n); }}
+              onPress={() => { setOpen(isOpen ? null : n.id); read(n); }}
             >
-              <Row style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <Row style={{ flex: 1, gap: 10, alignItems: 'flex-start', marginRight: 8 }}>
-                  {isUnread ? (
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: t.primary, marginTop: 6 }} />
-                  ) : null}
+              <Row style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                <Row style={{ gap: 10, flex: 1, alignItems: 'flex-start' }}>
+                  {/* Unread dot */}
+                  <View style={{ paddingTop: 5 }}>
+                    {isUnread
+                      ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: t.primary }} />
+                      : <View style={{ width: 8, height: 8 }} />}
+                  </View>
                   <View style={{ flex: 1, gap: 2 }}>
-                    <Txt variant="h3">{n.title}</Txt>
+                    <Txt variant="h3" numberOfLines={2}>{n.title}</Txt>
                     <Txt variant="small" tone="muted">{shortDateTime(n.createdAt)}</Txt>
                   </View>
                 </Row>
-                <Badge text={n.level} tone={levelTone} icon={iconName} />
+                <Row style={{ gap: 6, alignItems: 'center' }}>
+                  <Badge text={n.level} tone={LEVEL_TONE[n.level]} />
+                  <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={16} color={t.textMuted} />
+                </Row>
               </Row>
 
-              {open === n.id ? (
+              {isOpen ? (
                 <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: t.border, gap: 8 }}>
                   {n.body ? <Txt variant="body">{n.body}</Txt> : null}
                   {route(n) ? (

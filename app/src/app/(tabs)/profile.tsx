@@ -74,7 +74,7 @@ export default function Profile() {
       <Card tone="neutral">
         <Row style={{ gap: 16, alignItems: 'center', marginBottom: 12 }}>
           <View style={{ position: 'relative' }}>
-            <Avatar name={me.name} userId={me.id} size={64} />
+            <Avatar name={me.name} size={64} />
           </View>
           <View style={{ flex: 1 }}>
             <Row style={{ gap: 8, alignItems: 'center' }}>
@@ -153,4 +153,5 @@ export default function Profile() {
     </Screen>
   );
 }
+
 

@@ -38,7 +38,7 @@ export default function Users() {
           <Card key={u.id} onPress={() => router.push({ pathname: '/admin/user/[id]', params: { id: u.id } })}>
             <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <Row style={{ flex: 1, gap: 12, alignItems: 'center' }}>
-                <Avatar name={u.name} userId={u.id} size={42} />
+                <Avatar name={u.name} size={42} />
                 <View style={{ flex: 1 }}>
                   <Row style={{ gap: 6, alignItems: 'center' }}>
                     <Txt variant="h3">{u.name}</Txt>
@@ -58,4 +58,5 @@ export default function Users() {
     </Screen>
   );
 }
+
 

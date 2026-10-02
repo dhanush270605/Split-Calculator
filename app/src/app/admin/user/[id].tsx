@@ -50,7 +50,7 @@ export default function UserDetail() {
     <Screen onRefresh={r.refresh} refreshing={r.refreshing}>
       <Card tone="neutral">
         <Row style={{ gap: 16, alignItems: 'center', marginBottom: 12 }}>
-          <Avatar name={u.name} userId={u.id} size={56} />
+          <Avatar name={u.name} size={56} />
           <View style={{ flex: 1 }}>
             <Row style={{ gap: 8, alignItems: 'center' }}>
               <Txt variant="h2">{u.name}</Txt>

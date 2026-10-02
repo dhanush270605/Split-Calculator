@@ -1,11 +1,17 @@
 import React from 'react';
-import { Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/lib/auth';
 import { Avatar, Badge, confirm, IconButton, Row, Txt } from './components';
 import { radius, space, useTheme } from './theme';
+
+/** Cross-platform shadow helper */
+function shellShadow() {
+  if (Platform.OS === 'web') return { boxShadow: '0 4px 16px rgba(79,70,229,0.30)' } as any;
+  return { shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.30, shadowRadius: 8, elevation: 4 };
+}
 
 export function LogoMark({ size = 36, text = true }: { size?: number; text?: boolean }) {
   const t = useTheme();
@@ -21,7 +27,7 @@ export function LogoMark({ size = 36, text = true }: { size?: number; text?: boo
           borderRadius: radius.md,
           alignItems: 'center',
           justifyContent: 'center',
-          ...t.shadow,
+          ...shellShadow(),
         }}
       >
         <Ionicons name="pie-chart" size={size * 0.55} color="#FFFFFF" />

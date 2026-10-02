@@ -137,7 +137,7 @@ export default function ExpenseDetail() {
           {x.allocations.map((a: any) => (
             <Row key={a.userId} style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <Row style={{ flex: 1, gap: 10, alignItems: 'center' }}>
-                <Avatar name={a.name} userId={a.userId} size={36} />
+                <Avatar name={a.name} size={36} />
                 <View style={{ flex: 1 }}>
                   <Txt style={{ fontWeight: '600' }}>{a.name}{a.userId === me?.id ? ' (you)' : ''}</Txt>
                   <Txt variant="caption" tone="muted">{a.approvalStatus === 'APPROVED' ? 'Approved' : a.approvalStatus === 'DECLINED' ? 'Declined' : 'Awaiting response'}</Txt>
