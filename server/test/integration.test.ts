@@ -34,8 +34,8 @@ describe('auth & users', () => {
     // old token no longer valid
     expect((await c.api.get('/api/events').set('Authorization', `Bearer ${login.body.token}`)).status).toBe(401);
   });
-  it('passwords are stored hashed', () => {
-    const row = c.db.prepare(`SELECT password_hash FROM users WHERE username='alice'`).get() as any;
+  it('passwords are stored hashed', async () => {
+    const row = (await c.db.get(`SELECT password_hash FROM users WHERE username='alice'`)) as any;
     expect(row.password_hash).not.toContain('Passw0rd');
     expect(row.password_hash.startsWith('$2')).toBe(true);
   });
@@ -63,7 +63,7 @@ describe('events, participants, travel', () => {
     const e = await c.event();
     const r = await c.as('admin').patch(`/events/${e}`, { endDate: '2026-10-09', reason: 'Flight delayed' });
     expect(r.status).toBe(200);
-    const log = c.db.prepare(`SELECT * FROM audit_logs WHERE action='EVENT_EXTENDED' AND entity_id=?`).get(e) as any;
+    const log = (await c.db.get(`SELECT * FROM audit_logs WHERE action='EVENT_EXTENDED' AND entity_id=?`, e)) as any;
     expect(log).toBeTruthy();
     expect(JSON.parse(log.previous_state).endDate).toBe('2026-10-05');
     const n = await c.as('alice').get('/notifications?type=EVENT_IMPORTANT_CHANGE');
@@ -145,7 +145,7 @@ describe('expense flow: create → approve → decline → settle', () => {
     s = (await c.as('alice').get(`/events/${e}/settlement`)).body;
     expect(s.balances.find((b: any) => b.userId === c.ids.bob).netPaise).toBe(-45000);
     // history preserved
-    const actions = (c.db.prepare(`SELECT action FROM audit_logs WHERE entity_type='EXPENSE' AND entity_id=? ORDER BY id`).all(x.id) as any[]).map((a) => a.action);
+    const actions = ((await c.db.all(`SELECT action FROM audit_logs WHERE entity_type='EXPENSE' AND entity_id=? ORDER BY id`, x.id)) as any[]).map((a) => a.action);
     expect(actions).toEqual(['EXPENSE_CREATED', 'EXPENSE_APPROVED', 'EXPENSE_DECLINED', 'EXPENSE_UPDATED', 'EXPENSE_APPROVED']);
   });
 
@@ -223,7 +223,7 @@ describe('expense flow: create → approve → decline → settle', () => {
     const b = await c.as('alice').post('/expenses', { title: 'Retry', category: 'FOOD', amountPaise: 1000, paymentMethod: 'CASH', spentAt: new Date().toISOString(), ...body });
     expect(a.status).toBe(201); expect(b.status).toBe(200); expect(b.body.duplicate).toBe(true);
     expect(b.body.expense.id).toBe(a.body.expense.id);
-    expect((c.db.prepare(`SELECT COUNT(*) c FROM expenses`).get() as any).c).toBe(1);
+    expect(((await c.db.get(`SELECT COUNT(*) c FROM expenses`)) as any).c).toBe(1);
   });
 
   it('flags probable double-submits without a key unless confirmed', async () => {
@@ -282,7 +282,7 @@ describe('settlements', () => {
     expect(p.status).toBe(201); expect(p.body.settlement.status).toBe('PAID');
     const dup = await c.as('bob').post('/settlements', { eventId: e, toUserId: c.ids.alice, amountPaise: 4000, method: 'UPI', idempotencyKey: 'settle-key-0001' });
     expect(dup.body.duplicate).toBe(true);
-    expect((c.db.prepare(`SELECT COUNT(*) c FROM settlements`).get() as any).c).toBe(1);
+    expect(((await c.db.get(`SELECT COUNT(*) c FROM settlements`)) as any).c).toBe(1);
     // payer cannot confirm own payment; unconfirmed does not change balance
     expect((await c.as('bob').post(`/settlements/${p.body.settlement.id}/confirm`)).status).toBe(403);
     expect((await c.as('alice').get(`/events/${e}/settlement`)).body.balances.find((b: any) => b.userId === c.ids.bob).netPaise).toBe(-10000);
@@ -290,7 +290,7 @@ describe('settlements', () => {
     expect(cf.body.settlement.status).toBe('CONFIRMED');
     const cf2 = await c.as('alice').post(`/settlements/${p.body.settlement.id}/confirm`);
     expect(cf2.body.duplicate).toBe(true);
-    expect((c.db.prepare(`SELECT COUNT(*) c FROM audit_logs WHERE action='SETTLEMENT_CONFIRMED'`).get() as any).c).toBe(1);
+    expect(((await c.db.get(`SELECT COUNT(*) c FROM audit_logs WHERE action='SETTLEMENT_CONFIRMED'`)) as any).c).toBe(1);
     expect((await c.as('alice').get(`/events/${e}/settlement`)).body.balances.find((b: any) => b.userId === c.ids.bob).netPaise).toBe(-6000);
   });
   it('full settlement zeroes balances and marks expenses SETTLED', async () => {
@@ -312,7 +312,7 @@ describe('settlements', () => {
     expect((await c.as('admin').post(`/settlements/${p.body.settlement.id}/admin-override`, { status: 'CONFIRMED' })).status).toBe(400);
     const o = await c.as('admin').post(`/settlements/${p.body.settlement.id}/admin-override`, { status: 'CONFIRMED', adminNote: 'Verified bank statement' });
     expect(o.body.settlement.status).toBe('CONFIRMED');
-    const log = c.db.prepare(`SELECT * FROM audit_logs WHERE action='ADMIN_OVERRIDE' AND entity_type='SETTLEMENT'`).get() as any;
+    const log = (await c.db.get(`SELECT * FROM audit_logs WHERE action='ADMIN_OVERRIDE' AND entity_type='SETTLEMENT'`)) as any;
     expect(JSON.parse(log.previous_state).status).toBe('DISPUTED');
     expect(JSON.parse(log.metadata).reason).toBe('Verified bank statement');
   });
@@ -357,7 +357,7 @@ describe('notifications & admin visibility', () => {
     expect((await c.as('bob').get('/notifications?type=PROBLEM_UPDATE')).body.notifications).toHaveLength(1);
   });
   it('unexpected server errors are logged to system_errors and return a safe message', async () => {
-    c.db.exec(`DROP TABLE hackathon_details`);
+    await c.db.exec(`DROP TABLE hackathon_details`);
     const r = await c.as('admin').post('/events', { name: 'X', type: 'HACKATHON', startDate: '2026-01-01', endDate: '2026-01-02' });
     expect(r.status).toBe(500);
     expect(JSON.stringify(r.body)).not.toMatch(/SQLITE|stack|hackathon_details/i);

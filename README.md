@@ -3,7 +3,7 @@
 Expense splitting and management for **trips, hackathons, and hackathon + trip** events. It answers who paid, who benefited, who approved, and who owes whom. The server is the single source of truth for money.
 
 - **Mobile app:** Expo (React Native + TypeScript), also runs on web
-- **Backend:** Node.js + Express + SQLite (better-sqlite3), JWT auth, role-based authorization
+- **Backend:** Node.js + Express + PostgreSQL (Neon in production, embedded PGlite for local dev/tests), JWT auth, role-based authorization
 - **Cost:** ₹0. No paid services anywhere (see [PROJECT_PLAN.md](PROJECT_PLAN.md) §5 for why this stack rather than Firebase/Supabase).
 
 ## Features
@@ -22,7 +22,7 @@ Prerequisites: Node.js 20+ (tested on 22), npm.
 
 ```bash
 npm run install:all      # installs server + app dependencies
-npm run seed             # wipes the local demo DB and seeds 1 admin + 10 users + 3 events (see DEMO_ACCOUNTS.md)
+npm run seed             # (re)creates the local embedded database with 1 admin + 10 users + 3 events (see DEMO_ACCOUNTS.md)
 npm run dev:api          # API on http://localhost:4000
 ```
 In a second terminal:
@@ -59,7 +59,10 @@ See [DEPLOYMENT.md](DEPLOYMENT.md).
 [PROJECT_PLAN](PROJECT_PLAN.md) · [ARCHITECTURE](ARCHITECTURE.md) · [DATABASE_SCHEMA](DATABASE_SCHEMA.md) · [API_DOCUMENTATION](API_DOCUMENTATION.md) · [SECURITY](SECURITY.md) · [TESTING](TESTING.md) · [DEPLOYMENT](DEPLOYMENT.md) · [TROUBLESHOOTING](TROUBLESHOOTING.md) · [DEMO_ACCOUNTS](DEMO_ACCOUNTS.md) · [CHANGELOG](CHANGELOG.md) · [IMPLEMENTATION_REPORT](IMPLEMENTATION_REPORT.md)
 
 ## Free-tier / limits
-SQLite is a single-node database, which is fine for 10-100 users. Evidence files are stored on the server disk. Notifications are in-app (polled), with no push. See IMPLEMENTATION_REPORT.md for the full known-limitations list.
+PostgreSQL on Neon's free tier (0.5 GB). Evidence files are stored in the database (bytea). The free API host sleeps when idle. Notifications are in-app (polled), with no push. See IMPLEMENTATION_REPORT.md for the full known-limitations list.
 
 ## Roadmap
 Push notifications (Expo push), receipt OCR, UPI deep links, CSV/PDF export for users, multi-currency, group chat, Postgres adapter.
+
+## Production deployment (free)
+See [DEPLOYMENT.md](DEPLOYMENT.md): Neon (Postgres) + Render (API, auto-deploy from GitHub) + EAS (Android APK, OTA updates).

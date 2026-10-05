@@ -1,4 +1,4 @@
-# Database schema (SQLite)
+# Database schema (PostgreSQL)
 
 Source of truth: [`server/src/db.ts`](server/src/db.ts). All money is `INTEGER` paise; timestamps are ISO-8601 UTC text. Foreign keys are ON; WAL mode.
 

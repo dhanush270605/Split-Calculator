@@ -4,9 +4,9 @@
  *   npm run seed            -> wipes the local demo DB and seeds it
  * DEMO CREDENTIALS ONLY (documented in DEMO_ACCOUNTS.md). Never use these in a real deployment.
  */
-import fs from 'node:fs';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
+import fs from 'node:fs';
 import { config } from './config.js';
 import { openDb, type DB } from './db.js';
 import { createApp } from './app.js';
@@ -22,12 +22,12 @@ export const DEMO_USERS = [
 
 const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
-export function createBootstrapAdmin(db: DB, a: { username: string; password: string; name: string }) {
-  db.prepare(`INSERT INTO users (username,name,role,password_hash,must_change_password) VALUES (?,?, 'ADMIN', ?, 0)`).run(a.username, a.name, hashPassword(a.password));
+export async function createBootstrapAdmin(db: DB, a: { username: string; password: string; name: string }) {
+  await db.run(`INSERT INTO users (username,name,role,password_hash,must_change_password) VALUES (?,?, 'ADMIN', ?, 0)`, a.username, a.name, hashPassword(a.password));
 }
 
 export async function seedDemo(db: DB, log: (m: string) => void = () => {}) {
-  createBootstrapAdmin(db, DEMO_ADMIN);
+  await createBootstrapAdmin(db, DEMO_ADMIN);
   const server = http.createServer(createApp(db));
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
@@ -60,7 +60,7 @@ export async function seedDemo(db: DB, log: (m: string) => void = () => {}) {
         college: 'Demo Institute of Technology', department: dept, year, emergencyContact: 'Parent: 9000000000',
       });
       ids[username] = r.user.id;
-      db.prepare(`UPDATE users SET must_change_password=0 WHERE id=?`).run(r.user.id); // demo convenience only
+      await db.run(`UPDATE users SET must_change_password=0 WHERE id=?`, r.user.id); // demo convenience only
       await login(username, DEMO_PASSWORD);
     }
     const U = ids;
@@ -111,7 +111,7 @@ export async function seedDemo(db: DB, log: (m: string) => void = () => {}) {
       const payer = Object.keys(U).find((k) => U[k] === s2.fromUserId)!;
       await call(payer, 'POST', '/settlements', { eventId: trip.id, toUserId: s2.toUserId, amountPaise: Math.floor(s2.amountPaise / 2), method: 'CASH', note: 'Part payment', idempotencyKey: `seed-partial-${s2.fromUserId}` });
     }
-    db.prepare(`UPDATE events SET status='COMPLETED' WHERE id=?`).run(trip.id);
+    await db.run(`UPDATE events SET status='COMPLETED' WHERE id=?`, trip.id);
 
     // ---------------- Event 2: HACKATHON (upcoming) ----------------
     log('Event 2: Smart India Hackathon');
@@ -195,14 +195,18 @@ export async function seedDemo(db: DB, log: (m: string) => void = () => {}) {
   return ids;
 }
 
-// CLI entry
+// CLI entry: `npm run seed` seeds the LOCAL embedded database (never a remote DATABASE_URL unless SEED_REMOTE=yes)
 if (process.argv[1] && /seed\.(ts|js)$/.test(process.argv[1])) {
-  for (const f of [config.dbPath, config.dbPath + '-wal', config.dbPath + '-shm']) if (fs.existsSync(f)) fs.rmSync(f);
-  if (fs.existsSync(config.uploadDir)) for (const f of fs.readdirSync(config.uploadDir)) fs.rmSync(`${config.uploadDir}/${f}`);
-  const db = openDb(config.dbPath);
-  seedDemo(db, (m) => console.log(m)).then(() => {
-    const c = (t: string) => (db.prepare(`SELECT COUNT(*) c FROM ${t}`).get() as any).c;
-    console.log(`Seeded: ${c('users')} users, ${c('events')} events, ${c('expenses')} expenses, ${c('settlements')} settlements, ${c('notifications')} notifications, ${c('audit_logs')} audit rows`);
-    console.log(`Demo admin: ${DEMO_ADMIN.username} / ${DEMO_ADMIN.password}   Demo users: <username> / ${DEMO_PASSWORD}`);
-  }).catch((e) => { console.error(e); process.exit(1); });
+  const remote = /^postgres/i.test(config.databaseUrl);
+  if (remote && process.env.SEED_REMOTE !== 'yes') {
+    console.error('Refusing to seed a remote database. Set SEED_REMOTE=yes if you really mean it (this adds demo accounts).');
+    process.exit(1);
+  }
+  if (!remote && fs.existsSync(config.databaseUrl)) fs.rmSync(config.databaseUrl, { recursive: true, force: true });
+  const db = await openDb(config.databaseUrl);
+  await seedDemo(db, (m) => console.log(m));
+  const c = async (t: string) => (await db.get<any>(`SELECT COUNT(*) c FROM ${t}`))!.c;
+  console.log(`Seeded: ${await c('users')} users, ${await c('events')} events, ${await c('expenses')} expenses, ${await c('settlements')} settlements, ${await c('notifications')} notifications, ${await c('audit_logs')} audit rows`);
+  console.log(`Demo admin: ${DEMO_ADMIN.username} / ${DEMO_ADMIN.password}   Demo users: <username> / ${DEMO_PASSWORD}`);
+  await db.close();
 }

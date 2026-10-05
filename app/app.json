@@ -19,7 +19,8 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.splitcalculator.app",
-      "permissions": [
+      "permissions": [],
+      "blockedPermissions": [
         "android.permission.RECORD_AUDIO"
       ]
     },
@@ -46,7 +47,15 @@
       "router": {},
       "eas": {
         "projectId": "1bc1605b-8b2b-4187-b1fc-d23a29ee2602"
-      }
-    }
+      },
+      "apiUrl": "https://split-calculator-api.onrender.com/api"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/1bc1605b-8b2b-4187-b1fc-d23a29ee2602"
+    },
+    "primaryColor": "#4F46E5"
   }
 }

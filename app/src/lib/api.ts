@@ -3,27 +3,35 @@ import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+/**
+ * API base URL, in priority order:
+ *  1. EXPO_PUBLIC_API_URL (inlined at build/update time; set by EAS build profile)
+ *  2. expo.extra.apiUrl from app.json (can be changed with an OTA update)
+ *  3. development only: the machine running `expo start` (LAN IP), or 10.0.2.2 on the Android emulator
+ * There is intentionally NO hardcoded LAN/localhost fallback in release builds.
+ */
 function resolveBase(): string {
   const env = process.env.EXPO_PUBLIC_API_URL;
   if (env) return env.replace(/\/$/, '');
-  if (Platform.OS === 'web') {
-    const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+  const extra = (Constants.expoConfig as any)?.extra?.apiUrl as string | undefined;
+  if (extra) return extra.replace(/\/$/, '');
+  if (__DEV__) {
+    if (Platform.OS === 'web') return `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:4000/api`;
+    const hostUri = (Constants.expoConfig as any)?.hostUri as string | undefined;
+    const host = hostUri?.split(':')[0] ?? (Platform.OS === 'android' ? '10.0.2.2' : 'localhost');
     return `http://${host}:4000/api`;
   }
-  const hostUri = (Constants.expoConfig as any)?.hostUri as string | undefined; // LAN IP of the Expo dev server
-  const host = hostUri?.split(':')[0] ?? '192.168.31.158';
-  return `http://${host}:4000/api`;
+  return '';
 }
 let customBaseUrl: string | null = null;
 export function getApiBase(): string {
-  if (customBaseUrl) return customBaseUrl;
-  return resolveBase();
+  return customBaseUrl || resolveBase();
 }
+/** Dev-only escape hatch (login screen). Ignored in release builds. */
 export function setApiBaseOverride(url: string | null) {
-  customBaseUrl = url ? url.replace(/\/$/, '') : null;
+  customBaseUrl = __DEV__ && url ? url.replace(/\/$/, '') : null;
 }
 export const API_BASE = resolveBase();
-
 // Token storage: SecureStore on devices, AsyncStorage on web (SecureStore is unavailable there).
 const KEY = 'splitcalc.token';
 export const tokenStore = {
@@ -44,27 +52,66 @@ export class ApiError extends Error {
   get isNetwork() { return this.status === 0; }
 }
 
+/** True while a request is being retried because the (free-tier) server is waking up / unreachable. */
+export const wakingStore = {
+  value: false,
+  subs: new Set<(v: boolean) => void>(),
+  set(v: boolean) { if (this.value !== v) { this.value = v; this.subs.forEach((f) => f(v)); } },
+};
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const REQUEST_TIMEOUT_MS = 25000;
+const WAKE_RETRY_WINDOW_MS = 75000; // Render free instances can take ~50 s to cold start
+
+async function once(url: string, init: RequestInit): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  try { return await fetch(url, { ...init, signal: ctrl.signal }); } finally { clearTimeout(timer); }
+}
+
 export async function api<T = any>(method: string, path: string, body?: unknown, form?: FormData): Promise<T> {
+  const baseUrl = getApiBase();
+  if (!baseUrl) throw new ApiError(0, 'The app is not configured with a server address. Please install the latest version.', 'NO_API_URL');
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 20000);
-  let res: Response;
-  const baseUrl = getApiBase();
-  try {
-    res = await fetch(baseUrl + path, { method, headers, body: form ?? (body === undefined ? undefined : JSON.stringify(body)), signal: ctrl.signal });
-  } catch {
-    throw new ApiError(0, `Cannot reach the server (${baseUrl}). Check your connection and try again.`, 'NETWORK');
-  } finally { clearTimeout(timer); }
-  const json: any = await res.json().catch(() => ({}));
+  const init: RequestInit = { method, headers, body: form ?? (body === undefined ? undefined : JSON.stringify(body)) };
+  // Safe to retry: reads, logins, and writes carrying an idempotency key (the server de-duplicates them).
+  const retryable = method === 'GET' || path === '/auth/login' || (!!body && typeof body === 'object' && 'idempotencyKey' in (body as any));
+  const started = Date.now();
+  let attempt = 0;
+  let res: Response | null = null;
+  let lastErr: unknown = null;
+  for (;;) {
+    try {
+      res = await once(baseUrl + path, init);
+      if (retryable && [502, 503, 504].includes(res.status) && Date.now() - started < WAKE_RETRY_WINDOW_MS) { const st = res.status; res = null; throw new Error(`gateway ${st}`); }
+      break;
+    } catch (e) {
+      lastErr = e;
+      if (!retryable || Date.now() - started >= WAKE_RETRY_WINDOW_MS) { res = null; break; }
+      wakingStore.set(true);
+      await sleep(Math.min(2000 + attempt * 1500, 6000));
+      attempt++;
+    }
+  }
+  wakingStore.set(false);
+  if (!res) {
+    if (__DEV__) console.warn(`[api] ${method} ${baseUrl}${path} failed:`, lastErr);
+    const timedOut = (lastErr as any)?.name === 'AbortError';
+    throw new ApiError(0, timedOut
+      ? 'The server is taking too long to respond. Please try again in a moment.'
+      : `Can't connect to the server. Check your internet connection and try again.${__DEV__ ? ` (${baseUrl})` : ''}`, timedOut ? 'TIMEOUT' : 'NETWORK');
+  }
+  const json: any = await res.json().catch(() => null);
   if (!res.ok) {
     if (res.status === 401 && token && onUnauthorized) onUnauthorized();
-    throw new ApiError(res.status, json?.error?.message ?? `Request failed (${res.status})`, json?.error?.code, json?.error?.details);
+    const msg = json?.error?.message ?? (res.status >= 500 ? 'The server had a problem. Please try again shortly.' : `Request failed (${res.status})`);
+    throw new ApiError(res.status, msg, json?.error?.code, json?.error?.details);
   }
+  if (json === null) throw new ApiError(res.status, 'The server sent an unexpected response.', 'BAD_RESPONSE');
   return json as T;
-}
-export const get = <T = any>(p: string) => api<T>('GET', p);
+}export const get = <T = any>(p: string) => api<T>('GET', p);
 export const post = <T = any>(p: string, b: unknown = {}) => api<T>('POST', p, b);
 export const patch = <T = any>(p: string, b: unknown = {}) => api<T>('PATCH', p, b);
 export const del = <T = any>(p: string) => api<T>('DELETE', p);
@@ -84,7 +131,7 @@ export async function uploadAttachment(entityType: string, entityId: number, fil
 
 /** Fetch a protected attachment as a blob/data URL (auth header required, so <Image uri> alone cannot be used). */
 export async function fetchAttachmentUri(id: number): Promise<string> {
-  const res = await fetch(`${API_BASE}/attachments/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetch(`${getApiBase()}/attachments/${id}`, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) throw new ApiError(res.status, 'Could not load file');
   const blob = await res.blob();
   if (Platform.OS === 'web') return URL.createObjectURL(blob);

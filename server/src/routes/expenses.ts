@@ -4,7 +4,7 @@ import type { DB } from '../db.js';
 import { requireAuth, requireAdmin } from '../auth.js';
 import { badRequest } from '../errors.js';
 import { camel, camelAll } from '../helpers.js';
-import { parse, intQuery, optStr, PAYMENT_METHODS, SPLIT_METHODS } from '../validate.js';
+import { parse, intQuery, optStr, SPLIT_METHODS } from '../validate.js';
 import { expenseVisibilitySql, loadEventForUser } from '../access.js';
 import { computeSplit, SplitError } from '../engine/split.js';
 import {
@@ -16,20 +16,20 @@ export function expensesRouter(db: DB) {
   r.use(requireAuth(db));
 
   // Server-authoritative split preview (used by the app while the user types)
-  r.post('/expenses/preview', (req, res) => {
+  r.post('/expenses/preview', async (req, res) => {
     const d = parse(z.object({ amountPaise: z.number().int().positive(), splitMethod: z.enum(SPLIT_METHODS), participants: z.array(participantSchema).min(1) }), req.body);
     try { res.json({ allocations: computeSplit(d.amountPaise, d.splitMethod, d.participants) }); }
     catch (e) { if (e instanceof SplitError) throw badRequest(e.message); throw e; }
   });
 
-  r.get('/expenses', (req, res) => {
+  r.get('/expenses', async (req, res) => {
     const u = req.user!;
     const vis = expenseVisibilitySql(u);
     const where: string[] = [vis.sql];
     const params: any[] = [...vis.params];
     const add = (sql: string, ...p: any[]) => { where.push(sql); params.push(...p); };
     const q = req.query as Record<string, string | undefined>;
-    if (q.eventId) { loadEventForUser(db, u, Number(q.eventId)); add('e.event_id=?', Number(q.eventId)); }
+    if (q.eventId) { await loadEventForUser(db, u, Number(q.eventId)); add('e.event_id=?', Number(q.eventId)); }
     if (q.category) add('e.category=?', q.category);
     if (q.status) add('e.status=?', q.status);
     if (q.visibility) add('e.visibility=?', q.visibility);
@@ -41,24 +41,23 @@ export function expensesRouter(db: DB) {
     if (q.maxAmount) add('e.amount_paise<=?', Number(q.maxAmount));
     if (q.payerType) add('e.payer_type=?', q.payerType);
     if (q.mine === 'true') add(`(e.creator_id=? OR e.payer_user_id=? OR EXISTS (SELECT 1 FROM expense_allocations x WHERE x.expense_id=e.id AND x.user_id=?))`, u.id, u.id, u.id);
-    if (q.search) add('(e.title LIKE ? OR e.description LIKE ? OR e.subcategory LIKE ?)', `%${q.search}%`, `%${q.search}%`, `%${q.search}%`);
+    if (q.search) add(`(e.title LIKE ? OR COALESCE(e.description,'') LIKE ? OR COALESCE(e.subcategory,'') LIKE ?)`, `%${q.search}%`, `%${q.search}%`, `%${q.search}%`);
     const limit = intQuery(q.limit, 30, 1, 100), offset = intQuery(q.offset, 0, 0, 1e6);
     const w = where.join(' AND ');
-    const total = (db.prepare(`SELECT COUNT(*) c FROM expenses e WHERE ${w}`).get(...params) as any).c;
-    const rows = db.prepare(
+    const total = (await db.get<any>(`SELECT COUNT(*) c FROM expenses e WHERE ${w}`, ...params))!.c;
+    const rows = await db.all(
       `SELECT e.id, e.event_id, ev.name event_name, e.title, e.category, e.subcategory, e.amount_paise, e.status, e.visibility, e.payer_type, e.payer_user_id,
               COALESCE(p.name, e.payer_name) payer_name, e.creator_id, c.name creator_name, e.payment_method, e.split_method, e.spent_at, e.created_at, e.version,
               (SELECT share_paise FROM expense_allocations a WHERE a.expense_id=e.id AND a.user_id=?) my_share_paise,
               (SELECT approval_status FROM expense_allocations a WHERE a.expense_id=e.id AND a.user_id=?) my_approval
        FROM expenses e JOIN events ev ON ev.id=e.event_id JOIN users c ON c.id=e.creator_id LEFT JOIN users p ON p.id=e.payer_user_id
-       WHERE ${w} ORDER BY e.spent_at DESC, e.id DESC LIMIT ? OFFSET ?`,
-    ).all(u.id, u.id, ...params, limit, offset);
+       WHERE ${w} ORDER BY e.spent_at DESC, e.id DESC LIMIT ? OFFSET ?`, u.id, u.id, ...params, limit, offset);
     res.json({ expenses: camelAll(rows), total, limit, offset });
   });
 
   // Participant approval inbox
-  r.get('/approvals', (req, res) => {
-    const rows = db.prepare(
+  r.get('/approvals', async (req, res) => {
+    const rows = await db.all(
       `SELECT e.id expense_id, e.title, e.category, e.amount_paise, e.event_id, ev.name event_name, a.share_paise, c.name creator_name, COALESCE(p.name, e.payer_name) payer_name, e.spent_at, e.visibility, 'SHARE' kind
        FROM expense_allocations a JOIN expenses e ON e.id=a.expense_id JOIN events ev ON ev.id=e.event_id JOIN users c ON c.id=e.creator_id LEFT JOIN users p ON p.id=e.payer_user_id
        WHERE a.user_id=? AND a.approval_status='PENDING' AND e.status NOT IN ('CANCELLED','SETTLED')
@@ -66,42 +65,40 @@ export function expensesRouter(db: DB) {
        SELECT e.id, e.title, e.category, e.amount_paise, e.event_id, ev.name, 0, c.name, COALESCE(p.name, e.payer_name), e.spent_at, e.visibility, 'PAYER'
        FROM expenses e JOIN events ev ON ev.id=e.event_id JOIN users c ON c.id=e.creator_id LEFT JOIN users p ON p.id=e.payer_user_id
        WHERE e.payer_user_id=? AND e.payer_confirmed=0 AND e.status NOT IN ('CANCELLED','SETTLED')
-       ORDER BY spent_at DESC`,
-    ).all(req.user!.id, req.user!.id);
+       ORDER BY spent_at DESC`, req.user!.id, req.user!.id);
     res.json({ approvals: camelAll(rows) });
   });
 
-  r.post('/expenses', (req, res) => {
-    const { expense, duplicate } = createExpense(db, req.user!, req.body);
+  r.post('/expenses', async (req, res) => {
+    const { expense, duplicate } = await createExpense(db, req.user!, req.body);
     res.status(duplicate ? 200 : 201).json({ expense, duplicate });
   });
-  r.get('/expenses/:id', (req, res) => res.json({ expense: expenseDetail(db, req.user!, Number(req.params.id)) }));
-  r.patch('/expenses/:id', (req, res) => res.json({ expense: updateExpense(db, req.user!, Number(req.params.id), req.body) }));
-  r.post('/expenses/:id/respond', (req, res) => {
+  r.get('/expenses/:id', async (req, res) => res.json({ expense: await expenseDetail(db, req.user!, Number(req.params.id)) }));
+  r.patch('/expenses/:id', async (req, res) => res.json({ expense: await updateExpense(db, req.user!, Number(req.params.id), req.body) }));
+  r.post('/expenses/:id/respond', async (req, res) => {
     const d = parse(z.object({ decision: z.enum(['APPROVE', 'DECLINE']), note: optStr(500) }), req.body);
-    res.json({ expense: respondToExpense(db, req.user!, Number(req.params.id), d.decision, d.note) });
+    res.json({ expense: await respondToExpense(db, req.user!, Number(req.params.id), d.decision, d.note) });
   });
-  r.post('/expenses/:id/cancel', (req, res) => {
+  r.post('/expenses/:id/cancel', async (req, res) => {
     const d = parse(z.object({ reason: optStr(500) }), req.body ?? {});
-    res.json({ expense: cancelExpense(db, req.user!, Number(req.params.id), d.reason) });
+    res.json({ expense: await cancelExpense(db, req.user!, Number(req.params.id), d.reason) });
   });
-  r.post('/expenses/:id/dispute', (req, res) => {
+  r.post('/expenses/:id/dispute', async (req, res) => {
     const d = parse(z.object({ reason: z.string().trim().min(3).max(300), message: optStr(2000) }), req.body);
-    res.status(201).json(disputeExpense(db, req.user!, Number(req.params.id), d));
+    res.status(201).json(await disputeExpense(db, req.user!, Number(req.params.id), d));
   });
 
   // Admin dispute queue
-  r.get('/disputes', requireAdmin, (req, res) => {
+  r.get('/disputes', requireAdmin, async (req, res) => {
     const status = req.query.status ? String(req.query.status) : null;
-    const rows = db.prepare(
+    const rows = await db.all(
       `SELECT d.*, u.name raised_by_name, e.title expense_title, e.amount_paise, e.event_id FROM disputes d JOIN users u ON u.id=d.raised_by JOIN expenses e ON e.id=d.expense_id
-       WHERE (? IS NULL OR d.status=?) ORDER BY d.id DESC LIMIT 200`,
-    ).all(status, status);
+       WHERE (? IS NULL OR d.status=?) ORDER BY d.id DESC LIMIT 200`, status, status);
     res.json({ disputes: camelAll(rows) });
   });
-  r.post('/disputes/:id/resolve', requireAdmin, (req, res) => {
+  r.post('/disputes/:id/resolve', requireAdmin, async (req, res) => {
     const d = parse(z.object({ status: z.enum(['UNDER_REVIEW', 'RESOLVED', 'REJECTED', 'CORRECTED']), note: optStr(1000) }), req.body);
-    res.json({ dispute: camel(resolveDispute(db, req.user!, Number(req.params.id), d.status, d.note)) });
+    res.json({ dispute: camel(await resolveDispute(db, req.user!, Number(req.params.id), d.status, d.note)) });
   });
 
   return r;

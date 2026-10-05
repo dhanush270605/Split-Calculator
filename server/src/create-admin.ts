@@ -1,4 +1,4 @@
-/** Create the first (real) admin. Usage: ADMIN_USERNAME=me ADMIN_PASSWORD='Strong#Pass1' ADMIN_NAME='My Name' npm run create-admin */
+/** Create an admin. Usage: DATABASE_URL=... ADMIN_USERNAME=me ADMIN_PASSWORD='Strong#Pass1' ADMIN_NAME='My Name' npm run create-admin */
 import { config } from './config.js';
 import { openDb } from './db.js';
 import { createBootstrapAdmin } from './seed.js';
@@ -10,7 +10,8 @@ if (!username || !password || !name) {
   process.exit(1);
 }
 validatePasswordStrength(password);
-const db = openDb(config.dbPath);
-if (db.prepare(`SELECT 1 FROM users WHERE username=?`).get(username)) { console.error('That username already exists.'); process.exit(1); }
-createBootstrapAdmin(db, { username, password, name });
+const db = await openDb(config.databaseUrl);
+if (await db.get(`SELECT 1 x FROM users WHERE lower(username)=lower(?)`, username)) { console.error('That username already exists.'); process.exit(1); }
+await createBootstrapAdmin(db, { username, password, name });
 console.log(`Admin "${username}" created.`);
+await db.close();

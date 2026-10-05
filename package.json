@@ -5,7 +5,7 @@
   "description": "Trip / Hackathon expense splitting and management",
   "scripts": {
     "install:all": "npm --prefix server install && npm --prefix app install",
-    "dev:api": "npm --prefix server run start",
+    "dev:api": "npm --prefix server run dev",
     "dev:app": "npm --prefix app run start",
     "dev:web": "npm --prefix app run web",
     "seed": "npm --prefix server run seed",

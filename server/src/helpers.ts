@@ -4,7 +4,9 @@ export type Level = 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR' | 'ACTION_REQUIRED'
 
 export interface Actor { id: number; name: string; role: 'ADMIN' | 'USER' }
 
-export function audit(
+const j = (v: unknown) => (v === undefined ? null : JSON.stringify(v));
+
+export async function audit(
   db: DB,
   actor: Actor | null,
   action: string,
@@ -12,14 +14,10 @@ export function audit(
   entityId: number | null,
   opts: { eventId?: number | null; metadata?: unknown; previous?: unknown; next?: unknown } = {},
 ) {
-  db.prepare(
+  await db.run(
     `INSERT INTO audit_logs (actor_id, actor_name, action, entity_type, entity_id, event_id, metadata, previous_state, new_state)
      VALUES (?,?,?,?,?,?,?,?,?)`,
-  ).run(
-    actor?.id ?? null, actor?.name ?? null, action, entityType, entityId, opts.eventId ?? null,
-    opts.metadata === undefined ? null : JSON.stringify(opts.metadata),
-    opts.previous === undefined ? null : JSON.stringify(opts.previous),
-    opts.next === undefined ? null : JSON.stringify(opts.next),
+    actor?.id ?? null, actor?.name ?? null, action, entityType, entityId, opts.eventId ?? null, j(opts.metadata), j(opts.previous), j(opts.next),
   );
 }
 
@@ -28,40 +26,42 @@ export interface NotifyInput {
   entityType?: string; entityId?: number; eventId?: number;
 }
 
-/** In-app notification. Failures never break the business operation; they are logged as system errors. */
-export function notify(db: DB, userIds: number[], n: NotifyInput) {
-  const ins = db.prepare(
-    `INSERT INTO notifications (user_id, type, level, title, body, entity_type, entity_id, event_id) VALUES (?,?,?,?,?,?,?,?)`,
-  );
+/** In-app notification. A failure never breaks the business operation (savepoint) and is logged as a system error. */
+export async function notify(db: DB, userIds: number[], n: NotifyInput) {
   for (const uid of new Set(userIds)) {
-    try {
-      ins.run(uid, n.type, n.level ?? 'INFO', n.title, n.body ?? null, n.entityType ?? null, n.entityId ?? null, n.eventId ?? null);
-    } catch (e) {
-      logSystemError(db, 'notification', e, { userId: uid, type: n.type });
-    }
+    const r = await db.attempt(async () => {
+      await db.run(
+        `INSERT INTO notifications (user_id, type, level, title, body, entity_type, entity_id, event_id) VALUES (?,?,?,?,?,?,?,?)`,
+        uid, n.type, n.level ?? 'INFO', n.title, n.body ?? null, n.entityType ?? null, n.entityId ?? null, n.eventId ?? null,
+      );
+    });
+    if (!r.ok) await logSystemError(db, 'notification', r.error, { userId: uid, type: n.type });
   }
 }
 
-export function adminIds(db: DB): number[] {
-  return (db.prepare(`SELECT id FROM users WHERE role='ADMIN' AND status='ACTIVE'`).all() as { id: number }[]).map((r) => r.id);
+export async function adminIds(db: DB): Promise<number[]> {
+  return (await db.all<{ id: number }>(`SELECT id FROM users WHERE role='ADMIN' AND status='ACTIVE'`)).map((r) => r.id);
 }
-export const notifyAdmins = (db: DB, n: NotifyInput, except?: number) =>
-  notify(db, adminIds(db).filter((i) => i !== except), n);
+export async function notifyAdmins(db: DB, n: NotifyInput, except?: number) {
+  await notify(db, (await adminIds(db)).filter((i) => i !== except), n);
+}
 
-export function logSystemError(db: DB, source: string, err: unknown, context?: unknown, userId?: number | null, level: 'ERROR' | 'WARNING' = 'ERROR') {
+export async function logSystemError(db: DB, source: string, err: unknown, context?: unknown, userId?: number | null, level: 'ERROR' | 'WARNING' = 'ERROR') {
   try {
     const e = err instanceof Error ? err : new Error(String(err));
-    db.prepare(`INSERT INTO system_errors (level, source, message, stack, context, user_id) VALUES (?,?,?,?,?,?)`).run(
-      level, source, e.message.slice(0, 2000), e.stack?.slice(0, 4000) ?? null,
-      context === undefined ? null : JSON.stringify(context).slice(0, 4000), userId ?? null,
-    );
+    console.error(`[${source}]`, e.message);
+    await db.attempt(async () => {
+      await db.run(
+        `INSERT INTO system_errors (level, source, message, stack, context, user_id) VALUES (?,?,?,?,?,?)`,
+        level, source, e.message.slice(0, 2000), e.stack?.slice(0, 4000) ?? null, context === undefined ? null : JSON.stringify(context).slice(0, 4000), userId ?? null,
+      );
+    });
   } catch {
     /* last resort: never throw from the error logger */
-    console.error('[logSystemError failed]', err);
   }
 }
 
-/** Strip undefined, convert snake_case row to camelCase (shallow). */
+/** snake_case row -> camelCase (shallow). */
 export function camel<T = any>(row: any): T {
   if (!row) return row;
   const out: any = {};

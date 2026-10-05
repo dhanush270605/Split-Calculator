@@ -7,29 +7,29 @@ export interface EventRow {
   visibility: string; created_by: number; [k: string]: any;
 }
 
-export function getEventRow(db: DB, eventId: number): EventRow {
-  const ev = db.prepare(`SELECT * FROM events WHERE id=?`).get(eventId) as EventRow | undefined;
+export async function getEventRow(db: DB, eventId: number): Promise<EventRow> {
+  const ev = await db.get<EventRow>(`SELECT * FROM events WHERE id=?`, eventId);
   if (!ev) throw notFound('Event not found');
   return ev;
 }
 
-export const membership = (db: DB, eventId: number, userId: number) =>
-  (db.prepare(`SELECT status FROM event_participants WHERE event_id=? AND user_id=?`).get(eventId, userId) as { status: string } | undefined)?.status ?? null;
+export const membership = async (db: DB, eventId: number, userId: number) =>
+  (await db.get<{ status: string }>(`SELECT status FROM event_participants WHERE event_id=? AND user_id=?`, eventId, userId))?.status ?? null;
 
-export const isActiveMember = (db: DB, eventId: number, userId: number) => membership(db, eventId, userId) === 'ACTIVE';
+export const isActiveMember = async (db: DB, eventId: number, userId: number) => (await membership(db, eventId, userId)) === 'ACTIVE';
 
 /** Event is visible to admins and to anyone who is/was a participant (unless admin-only). */
-export function loadEventForUser(db: DB, user: AuthUser, eventId: number): EventRow {
-  const ev = getEventRow(db, eventId);
+export async function loadEventForUser(db: DB, user: AuthUser, eventId: number): Promise<EventRow> {
+  const ev = await getEventRow(db, eventId);
   if (user.role === 'ADMIN') return ev;
-  if (ev.visibility === 'ADMIN_ONLY' || membership(db, eventId, user.id) === null) throw notFound('Event not found'); // do not reveal existence
+  if (ev.visibility === 'ADMIN_ONLY' || (await membership(db, eventId, user.id)) === null) throw notFound('Event not found'); // do not reveal existence
   return ev;
 }
 
 /** Active (or admin) participation is required to create/change data inside an event. */
-export function requireActiveMember(db: DB, user: AuthUser, eventId: number) {
+export async function requireActiveMember(db: DB, user: AuthUser, eventId: number) {
   if (user.role === 'ADMIN') return;
-  if (!isActiveMember(db, eventId, user.id)) throw forbidden('You are not an active participant of this event');
+  if (!(await isActiveMember(db, eventId, user.id))) throw forbidden('You are not an active participant of this event');
 }
 
 /**
@@ -48,37 +48,37 @@ export function expenseVisibilitySql(user: AuthUser): { sql: string; params: any
   };
 }
 
-export function getExpenseForUser(db: DB, user: AuthUser, expenseId: number): any {
+export async function getExpenseForUser(db: DB, user: AuthUser, expenseId: number): Promise<any> {
   const vis = expenseVisibilitySql(user);
-  const row = db.prepare(`SELECT e.* FROM expenses e WHERE e.id=? AND ${vis.sql}`).get(expenseId, ...vis.params);
+  const row = await db.get(`SELECT e.* FROM expenses e WHERE e.id=? AND ${vis.sql}`, expenseId, ...vis.params);
   if (!row) throw notFound('Expense not found'); // 404 rather than 403: do not reveal private expenses exist
   return row;
 }
 
-export function isInvolved(db: DB, expense: any, userId: number): boolean {
+export async function isInvolved(db: DB, expense: any, userId: number): Promise<boolean> {
   if (expense.creator_id === userId || expense.payer_user_id === userId) return true;
-  return !!db.prepare(`SELECT 1 FROM expense_allocations WHERE expense_id=? AND user_id=?`).get(expense.id, userId);
+  return !!(await db.get(`SELECT 1 x FROM expense_allocations WHERE expense_id=? AND user_id=?`, expense.id, userId));
 }
 
-export function canAccessAttachment(db: DB, user: AuthUser, att: { entity_type: string; entity_id: number; uploader_id: number }): boolean {
+export async function canAccessAttachment(db: DB, user: AuthUser, att: { entity_type: string; entity_id: number; uploader_id: number }): Promise<boolean> {
   if (user.role === 'ADMIN' || att.uploader_id === user.id) return true;
   switch (att.entity_type) {
     case 'EXPENSE':
-      try { getExpenseForUser(db, user, att.entity_id); return true; } catch { return false; }
+      try { await getExpenseForUser(db, user, att.entity_id); return true; } catch { return false; }
     case 'SETTLEMENT': {
-      const s = db.prepare(`SELECT from_user_id, to_user_id FROM settlements WHERE id=?`).get(att.entity_id) as any;
+      const s = await db.get<any>(`SELECT from_user_id, to_user_id FROM settlements WHERE id=?`, att.entity_id);
       return !!s && (s.from_user_id === user.id || s.to_user_id === user.id);
     }
     case 'TRAVEL': {
-      const t = db.prepare(`SELECT event_id FROM travel_segments WHERE id=?`).get(att.entity_id) as any;
-      return !!t && membership(db, t.event_id, user.id) !== null;
+      const t = await db.get<any>(`SELECT event_id FROM travel_segments WHERE id=?`, att.entity_id);
+      return !!t && (await membership(db, t.event_id, user.id)) !== null;
     }
     case 'DISPUTE': {
-      const d = db.prepare(`SELECT raised_by, expense_id FROM disputes WHERE id=?`).get(att.entity_id) as any;
+      const d = await db.get<any>(`SELECT raised_by FROM disputes WHERE id=?`, att.entity_id);
       return !!d && d.raised_by === user.id;
     }
     case 'EVENT':
-      return membership(db, att.entity_id, user.id) !== null;
+      return (await membership(db, att.entity_id, user.id)) !== null;
     case 'PROFILE':
       return true; // avatars: any signed-in user
     default:

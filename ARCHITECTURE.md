@@ -1,7 +1,7 @@
 # Architecture
 
 ```
-Expo app (React Native + TS, Expo Router)  ──HTTPS/JSON + Bearer JWT──▶  Express API  ──▶  SQLite (WAL) + uploads/ dir
+Expo app (React Native + TS, Expo Router)  ──HTTPS/JSON + Bearer JWT──▶  Express API  ──▶  PostgreSQL (Neon) - evidence stored in the DB
  src/lib/api.ts  (client, idempotency keys)                               src/routes/*   thin HTTP + zod validation
  src/lib/queue.ts (offline queue)                                         src/services/* business rules, transactions
  src/lib/auth.tsx (session, 15s polling)                                  src/engine/*   pure money functions

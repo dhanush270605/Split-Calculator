@@ -1,19 +1,27 @@
+# Render Blueprint: New > Blueprint > pick this repo. Free web service; database is Neon (external, free).
 services:
   - type: web
-    name: split-calculator-backend
-    env: node
-    buildCommand: cd server && npm install && npm run build
-    startCommand: cd server && npm start
+    name: split-calculator-api
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: server
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: node dist/index.js
+    healthCheckPath: /api/health
+    autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 10000
       - key: JWT_SECRET
         generateValue: true
-      - key: DB_PATH
-        value: ./data/splitcalc.db
-      - key: UPLOAD_DIR
-        value: ./data/uploads
+      - key: DATABASE_URL            # paste your Neon connection string in the Render dashboard
+        sync: false
+      - key: BOOTSTRAP_ADMIN_USERNAME  # creates the first admin on first boot (only if the DB has no users)
+        sync: false
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
+      - key: SEED_DEMO                 # optional: "true" seeds demo users/events once into an EMPTY database
+        value: "false"
       - key: CORS_ORIGINS
         value: "*"

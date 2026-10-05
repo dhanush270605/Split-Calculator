@@ -149,7 +149,7 @@ export default function Profile() {
         <Btn variant="danger" icon="log-out-outline" title="Sign out of account" onPress={logout} />
       </Card>
 
-      <Txt variant="caption" tone="muted" style={{ textAlign: 'center', marginTop: 12 }}>Connected API Server: {API_BASE}</Txt>
+      <Txt variant="caption" tone="muted" style={{ textAlign: 'center', marginTop: 12 }}>{__DEV__ ? 'Dev server: ' + API_BASE : ''}</Txt>
     </Screen>
   );
 }

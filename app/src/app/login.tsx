@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/lib/auth';
-import { errMsg } from '@/lib/hooks';
-import { getApiBase, setApiBaseOverride } from '@/lib/api';
+import { errMsg, useWaking } from '@/lib/hooks';
+import { getApiBase } from '@/lib/api';
 import { Banner, Btn, Card, Row, Txt } from '@/ui/components';
 import { LogoMark } from '@/ui/shell';
 import { radius, space, useTheme } from '@/ui/theme';
@@ -20,40 +20,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [uFocused, setUFocused] = useState(false);
   const [pFocused, setPFocused] = useState(false);
-  const [currentApi, setCurrentApi] = useState(getApiBase());
-
-  const changeServerUrl = () => {
-    if (Platform.OS === 'web') {
-      const url = window.prompt('Enter Server API URL (e.g. http://192.168.31.158:4000/api):', currentApi);
-      if (url !== null) {
-        setApiBaseOverride(url);
-        setCurrentApi(getApiBase());
-      }
-    } else {
-      Alert.prompt(
-        'Server API URL',
-        'Enter your server API address (e.g. http://192.168.31.158:4000/api):',
-        [
-          {
-            text: 'Reset Default',
-            onPress: () => {
-              setApiBaseOverride(null);
-              setCurrentApi(getApiBase());
-            },
-          },
-          {
-            text: 'Save',
-            onPress: (val?: string) => {
-              setApiBaseOverride(val || null);
-              setCurrentApi(getApiBase());
-            },
-          },
-        ],
-        'plain-text',
-        currentApi
-      );
-    }
-  };
+  const waking = useWaking();
 
   const submit = async () => {
     setError(null);
@@ -75,6 +42,7 @@ export default function Login() {
         <Txt variant="sub" tone="sub">Sign in to manage trip expenses & settlements</Txt>
       </View>
 
+      {waking ? <Banner text="Waking up the server… the first sign-in after a quiet period can take up to a minute." tone="info" /> : null}
       {error ? <Banner text={error} tone="danger" /> : null}
 
       {/* Username field */}
@@ -141,11 +109,7 @@ export default function Login() {
         </Row>
       </View>
 
-      <Pressable onPress={changeServerUrl} style={{ marginTop: space.xs, padding: 4 }}>
-        <Txt variant="small" tone="muted" style={{ textAlign: 'center', textDecorationLine: 'underline' }}>
-          Connected to {currentApi} (Tap to change)
-        </Txt>
-      </Pressable>
+      {__DEV__ ? <Txt variant="small" tone="muted" style={{ textAlign: 'center' }}>Dev server: {getApiBase()}</Txt> : null}
     </Card>
   );
 
@@ -188,16 +152,16 @@ export default function Login() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: t.bg }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: space.lg }}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: t.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: space.lg }}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={{ marginBottom: space.xl, alignItems: 'center' }}>
           <LogoMark size={48} />
         </View>
         {loginForm}
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }

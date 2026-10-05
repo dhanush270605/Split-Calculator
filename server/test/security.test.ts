@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { makeCtx, PNG, type Ctx } from './kit.js';
 import { detectFileType } from '../src/routes/misc.js';
-import fs from 'node:fs';
-import path from 'node:path';
-import { config } from '../src/config.js';
 
 let c: Ctx;
 beforeEach(async () => { c = await makeCtx(); });
@@ -16,37 +13,37 @@ describe('authentication & account creation', () => {
   });
   it('there is no public registration; normal users cannot create accounts', async () => {
     expect([401, 404]).toContain((await c.api.post('/api/auth/register').send({ username: 'x', password: 'Passw0rd!' })).status);
-    expect(c.db.prepare(`SELECT 1 FROM users WHERE username='x'`).get()).toBeUndefined();
+    expect((await c.db.get(`SELECT 1 FROM users WHERE username='x'`))).toBeUndefined();
     expect((await c.api.post('/api/users').send({ username: 'evil', name: 'Evil', password: 'Passw0rd!' })).status).toBe(401);
     const r = await c.as('alice').post('/users', { username: 'evil', name: 'Evil', password: 'Passw0rd!', role: 'ADMIN' });
     expect(r.status).toBe(403);
-    expect(c.db.prepare(`SELECT 1 FROM users WHERE username='evil'`).get()).toBeUndefined();
+    expect((await c.db.get(`SELECT 1 FROM users WHERE username='evil'`))).toBeUndefined();
   });
   it('role is read from the database, not from the token or request (no privilege escalation)', async () => {
     // a user cannot promote themselves through profile update
     const r = await c.as('alice').patch('/auth/profile', { role: 'ADMIN' });
     expect(r.status).toBe(400);
-    expect((c.db.prepare(`SELECT role FROM users WHERE username='alice'`).get() as any).role).toBe('USER');
+    expect(((await c.db.get(`SELECT role FROM users WHERE username='alice'`)) as any).role).toBe('USER');
     // demoting an admin in the DB takes effect immediately on the next request
-    c.db.prepare(`UPDATE users SET role='USER' WHERE username='admin'`).run();
+    (await c.db.run(`UPDATE users SET role='USER' WHERE username='admin'`));
     expect((await c.as('admin').get('/admin/dashboard')).status).toBe(403);
   });
   it('login throttling after repeated failures', async () => {
     for (let i = 0; i < 8; i++) await c.api.post('/api/auth/login').send({ username: 'alice', password: 'wrong' + i });
     const r = await c.api.post('/api/auth/login').send({ username: 'alice', password: 'Passw0rd!' });
     expect(r.status).toBe(429);
-    expect((c.db.prepare(`SELECT COUNT(*) c FROM audit_logs WHERE action='LOGIN_FAILED'`).get() as any).c).toBe(8);
+    expect(((await c.db.get(`SELECT COUNT(*) c FROM audit_logs WHERE action='LOGIN_FAILED'`)) as any).c).toBe(8);
   });
   it('audit logs and error rows never contain passwords', async () => {
     await c.api.post('/api/auth/login').send({ username: 'alice', password: 'SuperSecretGuess1' });
-    const rows = JSON.stringify(c.db.prepare(`SELECT * FROM audit_logs`).all());
+    const rows = JSON.stringify((await c.db.all(`SELECT * FROM audit_logs`)));
     expect(rows).not.toContain('SuperSecretGuess1');
     expect(rows).not.toContain('Passw0rd!');
   });
-  it('audit log is immutable', () => {
-    c.db.prepare(`INSERT INTO audit_logs (action) VALUES ('X')`).run();
-    expect(() => c.db.prepare(`UPDATE audit_logs SET action='Y'`).run()).toThrow(/immutable/);
-    expect(() => c.db.prepare(`DELETE FROM audit_logs`).run()).toThrow(/immutable/);
+  it('audit log is immutable', async () => {
+    (await c.db.run(`INSERT INTO audit_logs (action) VALUES ('X')`));
+    await expect(c.db.run(`UPDATE audit_logs SET action='Y'`)).rejects.toThrow(/immutable/);
+    await expect(c.db.run(`DELETE FROM audit_logs`)).rejects.toThrow(/immutable/);
   });
 });
 
@@ -67,7 +64,7 @@ describe('admin authorization is enforced by the backend', () => {
     for (const r of adminRoutes) expect((await c.as('admin').get(r)).status, r).toBe(200);
   });
   it('admin cannot demote or deactivate themself', async () => {
-    expect((await c.as('admin').post(`/users/${(c.db.prepare(`SELECT id FROM users WHERE username='admin'`).get() as any).id}/status`, { status: 'INACTIVE' })).status).toBe(400);
+    expect((await c.as('admin').post(`/users/${((await c.db.get(`SELECT id FROM users WHERE username='admin'`)) as any).id}/status`, { status: 'INACTIVE' })).status).toBe(400);
   });
 });
 
@@ -159,7 +156,7 @@ describe('event & expense isolation', () => {
     await c.expense('alice', { eventId: e, participants: ids('alice') });
     const r = await c.as('alice').get(`/expenses?search=${encodeURIComponent("' OR 1=1; DROP TABLE expenses;--")}`);
     expect(r.status).toBe(200); expect(r.body.total).toBe(0);
-    expect((c.db.prepare(`SELECT COUNT(*) c FROM expenses`).get() as any).c).toBe(1);
+    expect(((await c.db.get(`SELECT COUNT(*) c FROM expenses`)) as any).c).toBe(1);
     expect((await c.api.post('/api/auth/login').send({ username: "admin' --", password: 'x' })).status).toBe(401);
   });
 });
@@ -183,10 +180,10 @@ describe('file upload security', () => {
     expect((await upload('outsider', x.id, PNG, 'mine.png')).status).toBe(404);
     const ok = await upload('alice', x.id, PNG, '../../etc/passwd.png');
     expect(ok.status).toBe(201);
-    const row = c.db.prepare(`SELECT * FROM attachments WHERE id=?`).get(ok.body.attachment.id) as any;
-    expect(row.stored_name).toMatch(/^[0-9a-f-]{36}\.png$/);
+    const row = (await c.db.get(`SELECT * FROM attachments WHERE id=?`, ok.body.attachment.id)) as any;
+    expect(row.mime).toBe('image/png');
     expect(row.original_name).not.toContain('/');
-    expect(fs.existsSync(path.join(config.uploadDir, row.stored_name))).toBe(true);
+    expect(!!(await c.db.get(`SELECT 1 x FROM attachment_data WHERE attachment_id=?`, ok.body.attachment.id))).toBe(true);
     const dl = await c.as('alice').get(`/attachments/${ok.body.attachment.id}`);
     expect(dl.headers['x-content-type-options']).toBe('nosniff');
     expect((await c.api.get(`/api/attachments/${ok.body.attachment.id}`)).status).toBe(401);

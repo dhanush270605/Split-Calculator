@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { ApiError } from './api';
+import { ApiError, wakingStore } from './api';
 
 /** Load data on focus with loading/error/refresh state. */
 export function useLoad<T>(fn: () => Promise<T>, deps: any[] = []) {
@@ -28,3 +28,10 @@ export function useDebounced<T>(value: T, ms = 350) {
 }
 
 export const errMsg = (e: unknown) => (e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Something went wrong');
+
+/** True while the app is retrying because the free-tier server is waking up. */
+export function useWaking() {
+  const [v, setV] = useState(wakingStore.value);
+  useEffect(() => { wakingStore.subs.add(setV); return () => { wakingStore.subs.delete(setV); }; }, []);
+  return v;
+}

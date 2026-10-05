@@ -39,7 +39,7 @@ export function signToken(user: { id: number; token_version: number }) {
 const ALLOWED_WHILE_MUST_CHANGE = new Set(['/api/auth/me', '/api/auth/change-password', '/api/auth/logout']);
 
 export function requireAuth(db: DB) {
-  return (req: Request, _res: Response, next: NextFunction) => {
+  return async (req: Request, _res: Response, next: NextFunction) => {
     const h = req.headers.authorization;
     if (!h?.startsWith('Bearer ')) throw unauthorized();
     let payload: any;
@@ -48,7 +48,7 @@ export function requireAuth(db: DB) {
     } catch {
       throw unauthorized('Session expired. Please sign in again.');
     }
-    const u = db.prepare(`SELECT id,name,username,role,status,token_version,must_change_password FROM users WHERE id=?`).get(payload.sub) as any;
+    const u = await db.get<any>(`SELECT id,name,username,role,status,token_version,must_change_password FROM users WHERE id=?`, payload.sub);
     if (!u || u.status !== 'ACTIVE' || u.token_version !== payload.tv) throw unauthorized('Session expired. Please sign in again.');
     req.user = { id: u.id, name: u.name, username: u.username, role: u.role, mustChangePassword: !!u.must_change_password };
     if (req.user.mustChangePassword && !ALLOWED_WHILE_MUST_CHANGE.has(req.originalUrl.split('?')[0])) {

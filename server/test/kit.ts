@@ -3,9 +3,6 @@ import { openDb, type DB } from '../src/db.js';
 import { createApp } from '../src/app.js';
 import { createBootstrapAdmin } from '../src/seed.js';
 import { _resetThrottle } from '../src/auth.js';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 
 process.env.BCRYPT_COST = '4';
 
@@ -27,8 +24,8 @@ export interface Ctx {
 let counter = 0;
 export async function makeCtx(users: string[] = ['alice', 'bob', 'carol', 'dave', 'outsider']): Promise<Ctx> {
   _resetThrottle();
-  const db = openDb(':memory:');
-  createBootstrapAdmin(db, { username: 'admin', password: 'Admin@1234', name: 'Admin' });
+  const db = await openDb(':memory:');
+  await createBootstrapAdmin(db, { username: 'admin', password: 'Admin@1234', name: 'Admin' });
   const app = createApp(db);
   const api = request(app);
   const tokens: Record<string, string> = {};
@@ -45,7 +42,7 @@ export async function makeCtx(users: string[] = ['alice', 'bob', 'carol', 'dave'
     const r = await as('admin').post('/users', { username, name: username[0].toUpperCase() + username.slice(1), password: 'Passw0rd!', ...extra });
     if (r.status !== 201) throw new Error('user create failed ' + JSON.stringify(r.body));
     ids[username] = r.body.user.id;
-    db.prepare(`UPDATE users SET must_change_password=0 WHERE id=?`).run(r.body.user.id);
+    (await db.run(`UPDATE users SET must_change_password=0 WHERE id=?`, r.body.user.id));
     await login(username, 'Passw0rd!');
     return r.body.user.id as number;
   };
@@ -68,4 +65,3 @@ export async function makeCtx(users: string[] = ['alice', 'bob', 'carol', 'dave'
   return { db, api, tokens, ids, as, user, event, expense };
 }
 
-export const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'splitcalc-'));
