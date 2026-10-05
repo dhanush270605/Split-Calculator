@@ -106,12 +106,27 @@ export async function api<T = any>(method: string, path: string, body?: unknown,
   const json: any = await res.json().catch(() => null);
   if (!res.ok) {
     if (res.status === 401 && token && onUnauthorized) onUnauthorized();
-    const msg = json?.error?.message ?? (res.status >= 500 ? 'The server had a problem. Please try again shortly.' : `Request failed (${res.status})`);
-    throw new ApiError(res.status, msg, json?.error?.code, json?.error?.details);
+    // If the response has a well-formed API error body, use its message.
+    const apiMsg = json?.error?.message as string | undefined;
+    let msg: string;
+    if (apiMsg) {
+      msg = apiMsg;
+    } else if (res.status === 404) {
+      // Bare 404 without an API body means the request hit the hosting router, not our server
+      msg = 'Cannot find the server. Please update the app or try again later.';
+    } else if (res.status >= 500) {
+      msg = 'The server had a problem. Please try again shortly.';
+    } else {
+      msg = `Something went wrong (${res.status}). Please try again.`;
+    }
+    if (__DEV__) console.warn(`[api] ${method} ${baseUrl}${path} → ${res.status}`, json);
+    throw new ApiError(res.status, msg, json?.error?.code ?? `HTTP_${res.status}`, json?.error?.details);
   }
   if (json === null) throw new ApiError(res.status, 'The server sent an unexpected response.', 'BAD_RESPONSE');
   return json as T;
-}export const get = <T = any>(p: string) => api<T>('GET', p);
+}
+
+export const get = <T = any>(p: string) => api<T>('GET', p);
 export const post = <T = any>(p: string, b: unknown = {}) => api<T>('POST', p, b);
 export const patch = <T = any>(p: string, b: unknown = {}) => api<T>('PATCH', p, b);
 export const del = <T = any>(p: string) => api<T>('DELETE', p);
