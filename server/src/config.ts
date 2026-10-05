@@ -13,7 +13,7 @@ export const config = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '30d',
   // Production: postgres://... (Neon). Local dev: a folder used by embedded Postgres (PGlite).
   databaseUrl: process.env.DATABASE_URL ?? path.resolve(process.cwd(), 'data', 'pglite'),
-  maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES ?? 4 * 1024 * 1024),
+  maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES ?? 8 * 1024 * 1024),
   corsOrigins: (process.env.CORS_ORIGINS ?? '*').split(',').map((s) => s.trim()),
   bcryptCost: Number(process.env.BCRYPT_COST ?? 10),
   // One-time bootstrap (production): creates the first admin if the users table is empty.

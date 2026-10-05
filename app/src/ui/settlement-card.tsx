@@ -31,7 +31,7 @@ export function SettlementCard({ s, meId, isAdmin, onChanged }: { s: any; meId: 
   };
 
   const addEvidence = async () => {
-    const p = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
+    const p = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.5 });
     if (p.canceled) return;
     const a = p.assets[0];
     try {

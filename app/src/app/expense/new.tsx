@@ -132,7 +132,7 @@ export default function ExpenseWizardForm() {
   }, [dbPreview]);
 
   const pick = async () => {
-    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7, allowsMultipleSelection: true, selectionLimit: 5 });
+    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.5, allowsMultipleSelection: true, selectionLimit: 5 });
     if (!r.canceled) setFiles((prev) => [...prev, ...r.assets].slice(0, 5));
   };
 

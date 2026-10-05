@@ -68,7 +68,7 @@ export default function ExpenseDetail() {
   };
 
   const addEvidence = async () => {
-    const p = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
+    const p = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.5 });
     if (p.canceled) return;
     const a = p.assets[0];
     await run(() => uploadAttachment('EXPENSE', x.id, { uri: a.uri, name: a.fileName ?? 'evidence.jpg', mimeType: a.mimeType ?? 'image/jpeg', file: (a as any).file }, 'RECEIPT'));

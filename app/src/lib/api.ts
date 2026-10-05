@@ -61,11 +61,12 @@ export const wakingStore = {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const REQUEST_TIMEOUT_MS = 25000;
+const UPLOAD_TIMEOUT_MS = 120000; // photos over mobile data can take a while
 const WAKE_RETRY_WINDOW_MS = 75000; // Render free instances can take ~50 s to cold start
 
-async function once(url: string, init: RequestInit): Promise<Response> {
+async function once(url: string, init: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try { return await fetch(url, { ...init, signal: ctrl.signal }); } finally { clearTimeout(timer); }
 }
 
@@ -84,7 +85,7 @@ export async function api<T = any>(method: string, path: string, body?: unknown,
   let lastErr: unknown = null;
   for (;;) {
     try {
-      res = await once(baseUrl + path, init);
+      res = await once(baseUrl + path, init, form ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
       if (retryable && [502, 503, 504].includes(res.status) && Date.now() - started < WAKE_RETRY_WINDOW_MS) { const st = res.status; res = null; throw new Error(`gateway ${st}`); }
       break;
     } catch (e) {
@@ -98,9 +99,10 @@ export async function api<T = any>(method: string, path: string, body?: unknown,
   wakingStore.set(false);
   if (!res) {
     if (__DEV__) console.warn(`[api] ${method} ${baseUrl}${path} failed:`, lastErr);
-    const timedOut = (lastErr as any)?.name === 'AbortError';
+    const timedOut = /abort/i.test(String((lastErr as any)?.name) + String((lastErr as any)?.message));
     throw new ApiError(0, timedOut
       ? 'The server is taking too long to respond. Please try again in a moment.'
+      : form ? 'Upload failed. Check your internet connection, or try a smaller photo.'
       : `Can't connect to the server. Check your internet connection and try again.${__DEV__ ? ` (${baseUrl})` : ''}`, timedOut ? 'TIMEOUT' : 'NETWORK');
   }
   const json: any = await res.json().catch(() => null);

@@ -47,7 +47,7 @@ export default function Profile() {
   };
 
   const uploadPhoto = async () => {
-    const p = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8, allowsEditing: true, aspect: [1, 1] });
+    const p = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.5, allowsEditing: true, aspect: [1, 1] });
     if (p.canceled) return;
     const a = p.assets[0];
     try {
